@@ -36,9 +36,7 @@ class GCNBlock(nn.Module):
 
 
 class Sandwich(nn.Module):
-    def __init__(self, num_nodes, num_edges, num_features,
-                 num_timesteps_input, num_timesteps_output,
-                 gcn_type='sage', hidden_size=64, normalize='none', use_residual=True, **kwargs):
+    def __init__(self, config)
         """
         :param num_nodes: Number of nodes in the graph.
         :param num_features: Number of features at each node in each time step.
@@ -48,6 +46,17 @@ class Sandwich(nn.Module):
         output by the network.
         """
         super(Sandwich, self).__init__()
+
+        num_nodes = getattr(config, 'num_nodes')
+        num_features = getattr(config, 'num_features')
+        num_timesteps_input = getattr(config, 'num_timesteps_input')
+        num_timesteps_output = getattr(config, 'num_timesteps_output')
+
+        hidden_size = getattr(config, 'hidden_size', 64)
+        gcn_type = getattr(config, 'gcn', 'gat')
+        normalize = getattr(config, 'normalize', 'none')
+
+        use_residual = getattr(config, 'use_residual', True)
 
         if use_residual:
             self.gru1 = KRNN(num_nodes, num_features, num_timesteps_input,

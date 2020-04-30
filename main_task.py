@@ -15,7 +15,6 @@ import pickle as pk
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-
 from tgcn import TGCN
 from sandwich import Sandwich
 
@@ -50,6 +49,12 @@ class STConfig(BaseConfig):
         self.pretrain_ckpt = 'none'
         self.use_residual = True
 
+        #Adjancency Matrix
+        self.A = None
+
+    def setAdj(self, A):
+        self.A = A
+
 
 def get_model_class(model):
     return {
@@ -59,7 +64,8 @@ def get_model_class(model):
 
 
 class NeighborSampleDataset(IterableDataset):
-    def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, shuffle=False, use_dist_sampler=False, rep_eval=None):
+    def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, shuffle=False,
+                 use_dist_sampler=False, rep_eval=None):
         self.X = X
         self.y = y
 
@@ -79,6 +85,7 @@ class NeighborSampleDataset(IterableDataset):
         self.graph_sampler = self._make_graph_sampler()
         self.length = self.get_length()
 
+
     def _make_graph_sampler(self):
         graph = Data(
             edge_index=self.edge_index, edge_attr=self.edge_weight, num_nodes=self.num_nodes
@@ -91,6 +98,7 @@ class NeighborSampleDataset(IterableDataset):
 
         return graph_sampler
 
+
     def get_subgraph(self, data_flow):
         sub_graph = {
             'edge_index': [block.edge_index for block in data_flow],
@@ -98,7 +106,7 @@ class NeighborSampleDataset(IterableDataset):
             'size': [block.size for block in data_flow],
             'res_n_id': [block.res_n_id for block in data_flow],
             'cent_n_id': data_flow[-1].n_id[data_flow[-1].res_n_id],
-            'graph_n_id': data_flow[0].n_id
+            'graph_n_id': data_flow[0].n_id,
         }
 
         return sub_graph
@@ -191,10 +199,10 @@ class WrapperNet(nn.Module):
 
         self.config = config
         model_class = get_model_class(config.model)
-        self.net = model_class(**vars(config))
+        self.net = model_class(config)
 
     def forward(self, X, g):
-        return self.net(X, g)
+        return self.net(X, g, config.A)
 
 
 class SpatialTemporalTask(BasePytorchTask):
@@ -235,6 +243,7 @@ class SpatialTemporalTask(BasePytorchTask):
                                                              )
 
         self.A = torch.from_numpy(A)
+        self.config.setAdj(A)
         self.sparse_A = self.A.to_sparse()
         self.edge_index = self.sparse_A._indices()
         self.edge_weight = self.sparse_A._values()
