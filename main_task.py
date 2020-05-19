@@ -15,10 +15,12 @@ import pickle as pk
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+
 from tgcn import TGCN
 from sandwich import Sandwich
+from sampler import ImportanceSampler
 
-from preprocess import generate_dataset, load_nyc_sharing_bike_data, load_metr_la_data, get_normalized_adj
+from preprocess import generate_dataset, load_nyc_sharing_bike_data, load_metr_la_data, load_pems_d7_data, get_normalized_adj
 from base_task import add_config_to_argparse, BaseConfig, BasePytorchTask, \
     LOSS_KEY, BAR_KEY, SCALAR_LOG_KEY, VAL_SCORE_KEY
 
@@ -32,10 +34,10 @@ class STConfig(BaseConfig):
 
         # 2. set spatial-temporal config variables:
         self.model = 'sandwich'  # choices: tgcn, stgcn, gwnet
-        self.dataset = 'metr'  # choices: metr, nyc
+        self.dataset = 'pemsd7'  # choices: metr, nyc
         # choices: ./data/METR-LA, ./data/NYC-Sharing-Bike
-        self.data_dir = './data/METR-LA'
-        self.gcn = 'gat'  # choices: sage, gat
+        self.data_dir = './data'
+        self.gcn = 'gcn'  # choices: sage, gat
 
         # per-gpu training batch size, real_batch_size = batch_size * num_gpus * grad_accum_steps
         self.batch_size = 32
@@ -49,12 +51,6 @@ class STConfig(BaseConfig):
         self.pretrain_ckpt = 'none'
         self.use_residual = True
 
-        #Adjancency Matrix
-        self.A = None
-
-    def setAdj(self, A):
-        self.A = A
-
 
 def get_model_class(model):
     return {
@@ -64,8 +60,7 @@ def get_model_class(model):
 
 
 class NeighborSampleDataset(IterableDataset):
-    def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, shuffle=False,
-                 use_dist_sampler=False, rep_eval=None):
+    def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, shuffle=True, use_dist_sampler=False, rep_eval=None):
         self.X = X
         self.y = y
 
@@ -85,28 +80,26 @@ class NeighborSampleDataset(IterableDataset):
         self.graph_sampler = self._make_graph_sampler()
         self.length = self.get_length()
 
-
     def _make_graph_sampler(self):
         graph = Data(
             edge_index=self.edge_index, edge_attr=self.edge_weight, num_nodes=self.num_nodes
         ).to('cpu')
 
-        graph_sampler = NeighborSampler(
-            # graph, size=[5, 5], num_hops=2, batch_size=100, shuffle=self.shuffle, add_self_loops=True
-            graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
+        graph_sampler = ImportanceSampler(
+            graph, size=[300, 100, 300, 500], num_layers=4, batch_size=100, shuffle=self.shuffle, skip_connect=False
+            # graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
         )
 
         return graph_sampler
-
 
     def get_subgraph(self, data_flow):
         sub_graph = {
             'edge_index': [block.edge_index for block in data_flow],
             'edge_weight': [self.edge_weight[block.e_id] for block in data_flow],
             'size': [block.size for block in data_flow],
-            'res_n_id': [block.res_n_id for block in data_flow],
-            'cent_n_id': data_flow[-1].n_id[data_flow[-1].res_n_id],
-            'graph_n_id': data_flow[0].n_id,
+            'cent_n_id': data_flow.n_id,
+            'n_id': [block.n_id for block in data_flow],
+            'graph_n_id': data_flow[0].n_id
         }
 
         return sub_graph
@@ -202,7 +195,7 @@ class WrapperNet(nn.Module):
         self.net = model_class(config)
 
     def forward(self, X, g):
-        return self.net(X, g, config.A)
+        return self.net(X, g)
 
 
 class SpatialTemporalTask(BasePytorchTask):
@@ -223,8 +216,10 @@ class SpatialTemporalTask(BasePytorchTask):
 
         if self.config.dataset == "metr":
             A, X, means, stds = load_metr_la_data(data_dir)
-        else:
+        elif self.config.dataset == "nyc":
             A, X, means, stds = load_nyc_sharing_bike_data(data_dir)
+        else:
+            A, X, means, stds = load_pems_d7_data(data_dir)
 
         split_line1 = int(X.shape[2] * 0.6)
         split_line2 = int(X.shape[2] * 0.8)
@@ -243,7 +238,6 @@ class SpatialTemporalTask(BasePytorchTask):
                                                              )
 
         self.A = torch.from_numpy(A)
-        self.config.setAdj(A)
         self.sparse_A = self.A.to_sparse()
         self.edge_index = self.sparse_A._indices()
         self.edge_weight = self.sparse_A._values()
@@ -358,8 +352,8 @@ class SpatialTemporalTask(BasePytorchTask):
             'val': y_hat[index_ptr.t().chunk(3)].squeeze(dim=0).data.cpu().numpy()
         })
 
-        # pred = pred.groupby(['row_idx', 'node_idx', 'feat_idx']).mean()
-        # label = label.groupby(['row_idx', 'node_idx', 'feat_idx']).mean()
+        pred = pred.groupby(['row_idx', 'node_idx', 'feat_idx']).mean()
+        label = label.groupby(['row_idx', 'node_idx', 'feat_idx']).mean()
 
         return {
             'label': label,
@@ -370,16 +364,14 @@ class SpatialTemporalTask(BasePytorchTask):
         pred = pd.concat([x['pred'] for x in outputs], axis=0)
         label = pd.concat([x['label'] for x in outputs], axis=0)
 
-        pred_std = pred.groupby(['row_idx', 'node_idx', 'feat_idx']).std().mean().values[0]
-
         pred = pred.groupby(['row_idx', 'node_idx', 'feat_idx']).mean()
         label = label.groupby(['row_idx', 'node_idx', 'feat_idx']).mean()
 
         loss = np.mean((pred.values - label.values) ** 2)
 
         out = {
-            BAR_KEY: {'{}_loss'.format(tag): loss, '{}_pred_std'.format(tag): pred_std},
-            SCALAR_LOG_KEY: {'{}_loss'.format(tag): loss, '{}_pred_std'.format(tag): pred_std},
+            BAR_KEY: {'{}_loss'.format(tag): loss},
+            SCALAR_LOG_KEY: {'{}_loss'.format(tag): loss},
             VAL_SCORE_KEY: -loss,  # a larger score corresponds to a better model
         }
 

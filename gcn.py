@@ -6,8 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric.nn as PyG
 from torch_geometric.data import Data, Batch, DataLoader, NeighborSampler, ClusterData, ClusterLoader
-from torch_scatter import scatter
-
+from torch_geometric.utils import degree
 
 class GatedGCN(PyG.MessagePassing):
     """
@@ -92,8 +91,7 @@ class GatedGCNNet(nn.Module):
 
 
 class MyGATConv(PyG.MessagePassing):
-    def __init__(self, in_channels, out_channels, num_nodes, edge_channels=1, normalize='none', A=A,
-                   **kwargs):
+    def __init__(self, in_channels, out_channels, edge_channels=1, normalize='none', **kwargs):
         super(MyGATConv, self).__init__(aggr='mean', **kwargs)
 
         self.in_channels = in_channels
@@ -107,8 +105,7 @@ class MyGATConv(PyG.MessagePassing):
         self.v = nn.Parameter(torch.Tensor(out_channels, out_channels))
 
         self.normalize = normalize
-        self.register_buffer('historical_hidden', torch.zeros(num_nodes, out_channels))
-        self.A = A
+
         if normalize == 'bn':
             self.batch_norm = nn.BatchNorm1d(out_channels)
         if normalize == 'ln':
@@ -136,22 +133,13 @@ class MyGATConv(PyG.MessagePassing):
 
         return self.propagate(edge_index, size=size, x=x, edge_weight=edge_weight)
 
-    def message(self, x_i, x_j, edge_index_j, edge_weight):
+    def message(self, edge_index_i, x_i, x_j, edge_weight):
         x_i = torch.matmul(x_i, self.u)
         x_j = torch.matmul(x_j, self.v)
 
         gate = F.sigmoid(x_i * x_j * edge_weight.unsqueeze(dim=1))
-        out = x_j * gate
-        #Renew Historical Hidden State Matrix
-        for index in edge_index_j.unique():
-            self.historical_hidden[index] = out[index]
-        return out
 
-    def aggregate(self, inputs, index, dim_size=None):
-        extra = torch.matmul(F.normalize(self.A, p=1, dim=1)[index], self.historical_hidden)
-        return scatter(torch.cat, index, dim=self.node_dim, dim_size=dim_size,
-                           reduce=self.aggr) + extra
-
+        return x_j * gate
 
     def update(self, aggr_out, x):
         x = x[1]
@@ -174,14 +162,12 @@ class MyGATConv(PyG.MessagePassing):
 
 
 class GATNet(nn.Module):
-    def __init__(self, in_channels, out_channels, normalize, num_nodes, A):
+    def __init__(self, in_channels, out_channels, normalize):
         super(GATNet, self).__init__()
-
         self.conv1 = MyGATConv(in_channels=in_channels,
-                               out_channels=16, normalize=normalize, num_nodes=num_nodes, A=A)
+                               out_channels=16, normalize=normalize)
         self.conv2 = MyGATConv(
-            in_channels=16, out_channels=out_channels, normalize=normalize, num_nodes=num_nodes, A=A)
-
+            in_channels=16, out_channels=out_channels, normalize=normalize)
 
     def forward(self, X, g):
         edge_index = g['edge_index']
@@ -373,4 +359,59 @@ class EGNNNet(nn.Module):
         X = F.leaky_relu(X)
         X = X.permute(1, 0, 2)
 
+        return X
+
+
+class GCNConv(PyG.MessagePassing):
+    def __init__(self, in_channels, out_channels, normalize=False, **kwargs):
+        super(GCNConv, self).__init__(aggr='mean')
+        self.lin = torch.nn.Linear(in_channels, out_channels)
+
+    def forward(self, x, edge_index, size):
+        x = self.lin(x)
+
+        row, col = edge_index
+        deg_i = degree(row, x.size(0), dtype=x.dtype)
+        deg_j = degree(col, x.size(0), dtype=x.dtype)
+        deg_i_inv_sqrt = deg_i.pow(-0.5)
+        deg_j_inv_sqrt = deg_j.pow(-0.5)
+        norm = deg_i_inv_sqrt[row] * deg_j_inv_sqrt[col]
+
+        return self.propagate(edge_index, size=size, x=x, norm=norm)
+
+    def message(self, x_j, norm):
+
+        return norm.view(-1, 1, 1) * x_j
+    
+    def update(self, aggr_out):
+        return aggr_out
+
+
+class GCN(nn.Module):
+    def __init__(self, in_channels, out_channels, normalize=True):
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(in_channels, 16)
+        self.conv2 = GCNConv(16, 64)
+        self.conv3 = GCNConv(64, 16)
+        self.conv4 = GCNConv(16, out_channels)
+
+    def forward(self, X, g):
+        edge_index = g['edge_index']
+        size = g['size']
+
+        X = X.permute(1, 0, 2)
+        conv1 = self.conv1(X, edge_index[0], size[0])
+
+        X = F.leaky_relu(conv1)
+        conv2 = self.conv2(X, edge_index[1], size[1])
+
+        X = F.leaky_relu(conv2)
+        conv3 = self.conv3(X, edge_index[2], size[2])
+
+        X = F.leaky_relu(conv3)
+        conv4 = self.conv4(X, edge_index[3], size[3])
+
+        X = F.leaky_relu(conv4)
+        X = X.permute(1, 0, 2)
+        print(X.size())
         return X
