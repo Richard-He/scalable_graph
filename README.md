@@ -1,9 +1,9 @@
 ### New-Sampler Code
 
-####Remaining Issue:
+#### Remaining Issue:
 - [ ] Computational Graph on GCN Bug
 - [ ] Skip Connection
 
-####TODO:
+#### TODO:
 - [ ] Dev-node Bug Free
 - [ ] Philly Result
