@@ -373,6 +373,7 @@ class GCNConv(PyG.MessagePassing):
         row, col = edge_index
         deg_i = degree(row, x.size(0), dtype=x.dtype)
         deg_j = degree(col, x.size(0), dtype=x.dtype)
+        print('-----------------------',min(deg_i), min(deg_j))
         deg_i_inv_sqrt = deg_i.pow(-0.5)
         deg_j_inv_sqrt = deg_j.pow(-0.5)
         norm = deg_i_inv_sqrt[row] * deg_j_inv_sqrt[col]

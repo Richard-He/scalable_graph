@@ -19,7 +19,7 @@ import pandas as pd
 
 from torch_geometric.data.sampler import Block, DataFlow
 from torch_geometric.data import Data
-from torch_geometric.utils import degree, segregate_self_loops
+from torch_geometric.utils import degree, segregate_self_loops, remove_isolated_nodes
 from torch_geometric.utils.repeat import repeat
 
 
@@ -123,30 +123,42 @@ class ImportanceSampler(object):
         samp = np.random.choice(range(self.num_nodes), size=size, replace=False, p=ndist)
         samp, _ = torch.from_numpy(samp).sort()
         e_id = []
+
         for sam in samp:
             for id in n_id:
                 if self.e_ids[sam, id] + 1 != 0:
                     e_id.append(self.e_ids[sam, id])
+
+        con_id = self.edge_index[self.i, e_id].unique()
+        # find the isolated nodes
+        isolate_nodes = torch.LongTensor(list(set(n_id.tolist()) - set(con_id.tolist())))
+        samp = torch.cat([samp, isolate_nodes])
+        for node in isolate_nodes:
+            e_id.append(self.e_ids[node, node])
         return samp, e_id
 
 
-    def __produce_block__(self, n_id_i, n_id_j):
-        e_id = []
-        for idj in n_id_j:
-            for idi in n_id_i:
-                if self.e_ids[idj, idi] + 1 != 0:
-                    e_id.append(self.e_ids[idj, idi])
-
-        edge_index_i = self.edge_index[self.i, e_id]
-        self.tmp[n_id] = torch.arange(n_id.size(0))
-        edges[self.i] = self.tmp[edge_index_i]
-
-        edge_index_j = self.edge_index[self.j, e_id]
-        self.tmp[n_id_j] = torch.arange(n_id_j.size(0))
-        edges[self.j] = self.tmp[edge_index_j]
-
-        edge_index = torch.stack(edges, dim=0)
-        return (n_id_j, None, e_id, edge_index), n_id_i
+    # def __produce_block__(self, n_id_i, n_id_j):
+    #     e_id = []
+    #     for idj in n_id_j:
+    #         for idi in n_id_i:
+    #             if self.e_ids[idj, idi] + 1 != 0:
+    #                 e_id.append(self.e_ids[idj, idi])
+    #
+    #     edges = [None, None]
+    #     new_n_id, e_id = self.sampler(n_id, self.size[l])
+    #     e_id = self.e_id[e_id]
+    #
+    #     edge_index_i = self.edge_index[self.i, e_id]
+    #     self.tmp[n_id] = torch.arange(n_id.size(0))
+    #     edges[self.i] = self.tmp[edge_index_i]
+    #
+    #     edge_index_j = self.edge_index[self.j, e_id]
+    #     self.tmp[n_id_j] = torch.arange(n_id_j.size(0))
+    #     edges[self.j] = self.tmp[edge_index_j]
+    #
+    #     edge_index = torch.stack(edges, dim=0)
+    #     return (n_id_j, None, e_id, edge_index), n_id_i
 
     def __produce_bipartite_data_flow_importance__(self, n_id):
         data_flow = DataFlow(n_id, self.flow)
@@ -160,7 +172,6 @@ class ImportanceSampler(object):
             edge_index_i = self.edge_index[self.i, e_id]
             self.tmp[n_id] = torch.arange(n_id.size(0))
             edges[self.i] = self.tmp[edge_index_i]
-
             edge_index_j = self.edge_index[self.j, e_id]
             self.tmp[new_n_id] = torch.arange(new_n_id.size(0))
             edges[self.j] = self.tmp[edge_index_j]

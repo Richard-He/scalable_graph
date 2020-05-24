@@ -40,7 +40,7 @@ class STConfig(BaseConfig):
         self.gcn = 'gcn'  # choices: sage, gat
 
         # per-gpu training batch size, real_batch_size = batch_size * num_gpus * grad_accum_steps
-        self.batch_size = 32
+        self.batch_size = 16
         self.normalize = 'none'
         self.num_timesteps_input = 12  # the length of the input time-series sequence
         self.num_timesteps_output = 3  # the length of the output time-series sequence
@@ -86,7 +86,7 @@ class NeighborSampleDataset(IterableDataset):
         ).to('cpu')
 
         graph_sampler = ImportanceSampler(
-            graph, size=[300, 100, 300, 500], num_layers=4, batch_size=100, shuffle=self.shuffle, skip_connect=False
+            graph, size=[200, 400, 300, 500], num_layers=4, batch_size=100, shuffle=self.shuffle, skip_connect=False
             # graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
         )
 
