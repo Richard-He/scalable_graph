@@ -99,7 +99,9 @@ class NeighborSampleDataset(IterableDataset):
             'size': [block.size for block in data_flow],
             'cent_n_id': data_flow.n_id,
             'n_id': [block.n_id for block in data_flow],
-            'graph_n_id': data_flow[0].n_id
+            'graph_n_id': data_flow[0].n_id,
+            'prob': [block.prob for block in data_flow],
+            'skip_index': [skip_index for skip_index in data_flow.skip_edge_index]
         }
 
         return sub_graph

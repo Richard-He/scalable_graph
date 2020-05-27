@@ -84,7 +84,7 @@ class Sandwich(nn.Module):
         """
         encoder_out, decoder_residual = self.gru1(X, g['graph_n_id'])
         gcn_out = self.gcn(encoder_out, g)
-        print('gcn_out is ', gcn_out)
+        #print('-----------gcn_out is ', gcn_out)
         _, decoder_out = self.gru(gcn_out, g['cent_n_id'])
         decoder_out = decoder_out.squeeze(dim=-1)
 

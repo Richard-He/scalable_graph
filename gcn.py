@@ -363,21 +363,17 @@ class EGNNNet(nn.Module):
 
 
 class GCNConv(PyG.MessagePassing):
-    def __init__(self, in_channels, out_channels, normalize=False, **kwargs):
+    def __init__(self, in_channels, out_channels, skip_connect=False, normalize=False, **kwargs):
         super(GCNConv, self).__init__(aggr='mean')
         self.lin = torch.nn.Linear(in_channels, out_channels)
 
-    def forward(self, x, edge_index, size):
+    def forward(self, x, edge_index, size, prob):
         x = self.lin(x)
-
         row, col = edge_index
-        deg_i = degree(row, x.size(0), dtype=x.dtype)
-        deg_j = degree(col, x.size(0), dtype=x.dtype)
-        print('-----------------------',min(deg_i), min(deg_j))
-        deg_i_inv_sqrt = deg_i.pow(-0.5)
-        deg_j_inv_sqrt = deg_j.pow(-0.5)
-        norm = deg_i_inv_sqrt[row] * deg_j_inv_sqrt[col]
-
+        deg_r = degree(row, size[0], dtype=x.dtype)
+        deg_c = degree(col, size[1], dtype=x.dtype)
+        #print(min(deg_c), min(deg_r))
+        norm = prob[edge_index[0]].pow(-1) * deg_r.pow(-0.5)[edge_index[0]] * deg_c.pow(-0.5)[edge_index[1]]
         return self.propagate(edge_index, size=size, x=x, norm=norm)
 
     def message(self, x_j, norm):
@@ -399,20 +395,21 @@ class GCN(nn.Module):
     def forward(self, X, g):
         edge_index = g['edge_index']
         size = g['size']
+        prob = g['prob']
 
         X = X.permute(1, 0, 2)
-        conv1 = self.conv1(X, edge_index[0], size[0])
+        conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
 
         X = F.leaky_relu(conv1)
-        conv2 = self.conv2(X, edge_index[1], size[1])
+        conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
 
         X = F.leaky_relu(conv2)
-        conv3 = self.conv3(X, edge_index[2], size[2])
+        conv3 = self.conv3(X, edge_index[2], size[2], prob[0])
 
         X = F.leaky_relu(conv3)
-        conv4 = self.conv4(X, edge_index[3], size[3])
+        conv4 = self.conv4(X, edge_index[3], size[3], prob[0])
 
         X = F.leaky_relu(conv4)
         X = X.permute(1, 0, 2)
-        print(X.size())
+        #print(X.size())
         return X

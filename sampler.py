@@ -17,10 +17,70 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from torch_geometric.data.sampler import Block, DataFlow
 from torch_geometric.data import Data
 from torch_geometric.utils import degree, segregate_self_loops, remove_isolated_nodes
 from torch_geometric.utils.repeat import repeat
+
+
+class Block(object):
+    def __init__(self, n_id, res_n_id, e_id, edge_index, size, prob):
+        self.n_id = n_id
+        self.res_n_id = res_n_id
+        self.e_id = e_id
+        self.edge_index = edge_index
+        self.size = size
+        self.prob = prob
+
+    def __repr__(self):
+        info = [(key, getattr(self, key)) for key in self.__dict__]
+        info = ['{}={}'.format(key, size_repr(item)) for key, item in info]
+        return '{}({})'.format(self.__class__.__name__, ', '.join(info))
+
+
+class DataFlow(object):
+    def __init__(self, n_id, flow='source_to_target'):
+        self.n_id = n_id
+        self.flow = flow
+        self.__last_n_id__ = n_id
+        self.blocks = []
+        self.skip_edge_index = []
+
+    @property
+    def batch_size(self):
+        return self.n_id.size(0)
+
+    def append(self, n_id, res_n_id, e_id, edge_index, distribution):
+        i, j = (0, 1) if self.flow == 'target_to_source' else (1, 0)
+        size = [None, None]
+        size[i] = self.__last_n_id__.size(0)
+        size[j] = n_id.size(0)
+        block = Block(n_id, res_n_id, e_id, edge_index, tuple(size), distribution)
+        self.blocks.append(block)
+        self.__last_n_id__ = n_id
+
+    def add_skip_index(self, edge_index):
+        self.skip_edge_index = edge_index
+
+    def __len__(self):
+        return len(self.blocks)
+
+    def __getitem__(self, idx):
+        return self.blocks[::-1][idx]
+
+    def __iter__(self):
+        for block in self.blocks[::-1]:
+            yield block
+
+    def to(self, device):
+        for block in self.blocks:
+            block.edge_index = block.edge_index.to(device)
+        return self
+
+    def __repr__(self):
+        n_ids = [self.n_id] + [block.n_id for block in self.blocks]
+        sep = '<-' if self.flow == 'source_to_target' else '->'
+        info = sep.join([str(n_id.size(0)) for n_id in n_ids])
+        return '{}({})'.format(self.__class__.__name__, info)
 
 
 class ImportanceSampler(object):
@@ -41,7 +101,7 @@ class ImportanceSampler(object):
     """
 
     def __init__(self, data, size, num_layers, batch_size=1, shuffle=False, drop_last=False,
-                 skip_connect=False, flow='source_to_target'):
+                 flow='source_to_target', skip_connect=False):
 
         self.data = data
         self.size = repeat(size, num_layers)
@@ -72,7 +132,7 @@ class ImportanceSampler(object):
 
         self.e_ids = -1 * torch.ones([self.num_nodes, self.num_nodes], dtype=torch.long)
         for id in range(self.edge_index.size(1)):
-            self.e_ids[self.edge_index[self.i][id], self.edge_index[self.j][id]] = id
+            self.e_ids[self.edge_index[self.j][id], self.edge_index[self.i][id]] = id
 
         self.tmp = torch.empty(data.num_nodes, dtype=torch.long)
 
@@ -121,7 +181,7 @@ class ImportanceSampler(object):
         if maxsz < size:
             size = maxsz
         samp = np.random.choice(range(self.num_nodes), size=size, replace=False, p=ndist)
-        samp, _ = torch.from_numpy(samp).sort()
+        samp = torch.from_numpy(samp)
         e_id = []
 
         for sam in samp:
@@ -135,40 +195,55 @@ class ImportanceSampler(object):
         samp = torch.cat([samp, isolate_nodes])
         for node in isolate_nodes:
             e_id.append(self.e_ids[node, node])
-        return samp, e_id
+        samp, _ = samp.sort()
+        p = torch.from_numpy(ndist)[samp]
+        return samp, e_id, p
 
 
-    # def __produce_block__(self, n_id_i, n_id_j):
-    #     e_id = []
-    #     for idj in n_id_j:
-    #         for idi in n_id_i:
-    #             if self.e_ids[idj, idi] + 1 != 0:
-    #                 e_id.append(self.e_ids[idj, idi])
-    #
-    #     edges = [None, None]
-    #     new_n_id, e_id = self.sampler(n_id, self.size[l])
-    #     e_id = self.e_id[e_id]
-    #
-    #     edge_index_i = self.edge_index[self.i, e_id]
-    #     self.tmp[n_id] = torch.arange(n_id.size(0))
-    #     edges[self.i] = self.tmp[edge_index_i]
-    #
-    #     edge_index_j = self.edge_index[self.j, e_id]
-    #     self.tmp[n_id_j] = torch.arange(n_id_j.size(0))
-    #     edges[self.j] = self.tmp[edge_index_j]
-    #
-    #     edge_index = torch.stack(edges, dim=0)
-    #     return (n_id_j, None, e_id, edge_index), n_id_i
+    def produce_edge_index(self, n_id_j, n_id_i):
+        e_id = []
+        for j in n_id_j:
+            for i in n_id_i:
+                if self.e_ids[j, i] + 1 != 0:
+                    e_id.append(self.e_ids[j, i])
+
+        edges = [None, None]
+        # produce mapping
+        edge_index_i = self.edge_index[self.i, e_id]
+        self.tmp[n_id_i] = torch.arange(n_id_i.size(0))
+        edges[self.i] = self.tmp[edge_index_i]
+        edge_index_j = self.edge_index[self.j, e_id]
+        self.tmp[n_id_j] = torch.arange(n_id_j.size(0))
+        edges[self.j] = self.tmp[edge_index_j]
+
+        edge_index = torch.stack(edges, dim=0)
+        return edge_index
+
+
+    def find_residual(self, data_flow):
+        edge_indexes = []
+
+        for i in range(len(data_flow)-2):
+            n_id_j = data_flow[i].n_id
+            n_id_i = data_flow[i+2].n_id
+            edge_index = self.produce_edge_index(n_id_j, n_id_i)
+            edge_indexes.append(edge_index)
+        return edge_indexes
+
 
     def __produce_bipartite_data_flow_importance__(self, n_id):
+        n_id, _ = n_id.sort()
         data_flow = DataFlow(n_id, self.flow)
         for l in range(self.num_layers):
 
             #prepare for edge_index in the block
             edges = [None, None]
-            new_n_id, e_id = self.sampler(n_id, self.size[l])
+            new_n_id, e_id, p = self.sampler(n_id, self.size[l])
+
+            #new_n_id is sorted
             e_id = self.e_id[e_id]
 
+            #mapping real edge_index to flow edge_index
             edge_index_i = self.edge_index[self.i, e_id]
             self.tmp[n_id] = torch.arange(n_id.size(0))
             edges[self.i] = self.tmp[edge_index_i]
@@ -176,9 +251,17 @@ class ImportanceSampler(object):
             self.tmp[new_n_id] = torch.arange(new_n_id.size(0))
             edges[self.j] = self.tmp[edge_index_j]
 
+            #create new edge_index
             edge_index = torch.stack(edges, dim=0)
+
+            #update new_n_id
             n_id = new_n_id
-            data_flow.append(n_id, None, e_id, edge_index)
+            data_flow.append(n_id, None, e_id, edge_index, p)
+
+
+        if self.skip_connect:
+            edge_index = find_residual(data_flow)
+            data_flow.add_skip_index(edge_index)
 
         return data_flow
 
