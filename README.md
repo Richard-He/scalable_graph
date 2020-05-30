@@ -1,7 +1,7 @@
 ### New-Sampler Code
 
 #### Remaining Issue:
-- [ ] Computational Graph on GCN Bug
+- [X] Computational Graph on GCN Bug
 - [ ] Skip Connection
 
 #### TODO:

@@ -2,18 +2,18 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from gcn import SAGENet, GATNet, GatedGCNNet, EGNNNet, GCN
+from gcn import SAGENet, GATNet, GatedGCNNet, EGNNNet, GCN1, GCN2, GCN3, GCN4
 from krnn import KRNN
 
 from torch_geometric.data import Data, Batch, DataLoader, NeighborSampler, ClusterData, ClusterLoader
 
 
 class GCNBlock(nn.Module):
-    def __init__(self, in_channels, spatial_channels, num_nodes, gcn_type, normalize):
+    def __init__(self, in_channels, spatial_channels, gcn_type, normalize):
         super(GCNBlock, self).__init__()
         GCNUnit = {'sage': SAGENet, 'gat': GATNet,
                    'gated': GatedGCNNet, 'egnn': EGNNNet,
-                   'gcn': GCN}.get(gcn_type)
+                   'gcn1': GCN1, 'gcn2': GCN2, 'gcn3': GCN3, 'gcn4': GCN4}.get(gcn_type)
         self.gcn = GCNUnit(in_channels=in_channels,
                            out_channels=spatial_channels,
                            normalize=normalize
@@ -68,7 +68,6 @@ class Sandwich(nn.Module):
 
         self.gcn = GCNBlock(in_channels=hidden_size,
                             spatial_channels=hidden_size,
-                            num_nodes=num_nodes,
                             gcn_type=gcn_type,
                             normalize=normalize
                             )
@@ -84,13 +83,12 @@ class Sandwich(nn.Module):
         """
         encoder_out, decoder_residual = self.gru1(X, g['graph_n_id'])
         gcn_out = self.gcn(encoder_out, g)
-        #print('-----------gcn_out is ', gcn_out)
         _, decoder_out = self.gru(gcn_out, g['cent_n_id'])
         decoder_out = decoder_out.squeeze(dim=-1)
 
         # if decoder_residual is not None:
         #     for res_n_id in g['res_n_id']:
         #         decoder_residual = decoder_residual[:, res_n_id]
-        #     decoder_out = decoder_out + decoder_residual
+        #         decoder_out = decoder_out + decoder_residual
 
         return decoder_out

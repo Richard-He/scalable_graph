@@ -384,9 +384,114 @@ class GCNConv(PyG.MessagePassing):
         return aggr_out
 
 
-class GCN(nn.Module):
+# class ResGCN(nn.Module):
+#     def __init__(self, in_channels, out_channels, normalize=True):
+#         super(GCN, self).__init__()
+#         self.conv1 = GCNConv(in_channels, 16)
+#         self.conv2 = GCNConv(16, 32)
+#         self.conv3 = GCNConv(32, 16)
+#         self.conv4 = GCNConv(16, 32)
+#         self.conv5 = GCNConv(32, 16)
+#         self.conv6 = GCNConv(16, out_channels)
+#
+#         self.skipconv1 = GCNConv(in_channels, 64)
+#         self.skipconv2 = GCNConv(16, 16)
+#         self.skipconv3 = GCNConv(32, 32)
+#         self.skipconv4 = GCNConv(16, 16)
+#
+#     def forward(self, X, g):
+#         edge_index = g['edge_index']
+#         prob = g['prob']
+#         skip_index = g['skip_index']
+#
+#         X_0 = X.permute(1, 0, 2)
+#         conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
+#
+#         X_1 = F.leaky_relu(conv1)
+#         conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
+#
+#         skip_conv1 = self.skipconv1(X_0, skip_index[0])
+#         X_2 = F.leaky_relu(conv2)
+#         conv3 = self.conv3(X, edge_index[2], size[2], prob[0]) + skip_conv
+#
+#         X_3 = F.leaky_relu(conv3)
+#         conv4 = self.conv4(X, edge_index[3], size[3], prob[0])
+#
+#         X_4 = F.leaky_relu(conv4)
+#         X = X_4.permute(1, 0, 2)
+#         #print(X.size())
+#         return X
+
+
+class GCN1(nn.Module):
     def __init__(self, in_channels, out_channels, normalize=True):
-        super(GCN, self).__init__()
+        super(GCN1, self).__init__()
+        self.conv1 = GCNConv(in_channels, out_channels)
+
+    def forward(self, X, g):
+        edge_index = g['edge_index']
+        size = g['size']
+        prob = g['prob']
+
+        X = X.permute(1, 0, 2)
+        conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
+
+        X = F.leaky_relu(conv1)
+        X = X.permute(1, 0, 2)
+        # print(X.size())
+        return X
+
+class GCN2(nn.Module):
+    def __init__(self, in_channels, out_channels, normalize=True):
+        super(GCN2, self).__init__()
+        self.conv1 = GCNConv(in_channels, 16)
+        self.conv2 = GCNConv(16, out_channels)
+
+    def forward(self, X, g):
+        edge_index = g['edge_index']
+        size = g['size']
+        prob = g['prob']
+
+        X = X.permute(1, 0, 2)
+        conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
+
+        X = F.leaky_relu(conv1)
+        conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
+
+        X = F.leaky_relu(conv2)
+        X = X.permute(1, 0, 2)
+        # print(X.size())
+        return X
+
+class GCN3(nn.Module):
+    def __init__(self, in_channels, out_channels, normalize=True):
+        super(GCN3, self).__init__()
+        self.conv1 = GCNConv(in_channels, 16)
+        self.conv2 = GCNConv(16, 64)
+        self.conv3 = GCNConv(16, out_channels)
+
+    def forward(self, X, g):
+        edge_index = g['edge_index']
+        size = g['size']
+        prob = g['prob']
+
+        X = X.permute(1, 0, 2)
+        conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
+
+        X = F.leaky_relu(conv1)
+        conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
+
+        X = F.leaky_relu(conv2)
+        conv3 = self.conv3(X, edge_index[2], size[2], prob[0])
+
+        X = F.leaky_relu(conv3)
+        X = X.permute(1, 0, 2)
+        # print(X.size())
+        return X
+
+class GCN4(nn.Module):
+    def __init__(self, in_channels, out_channels, normalize=True):
+        super(GCN4, self).__init__()
         self.conv1 = GCNConv(in_channels, 16)
         self.conv2 = GCNConv(16, 64)
         self.conv3 = GCNConv(64, 16)
@@ -411,5 +516,5 @@ class GCN(nn.Module):
 
         X = F.leaky_relu(conv4)
         X = X.permute(1, 0, 2)
-        #print(X.size())
+        # print(X.size())
         return X

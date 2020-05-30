@@ -101,7 +101,7 @@ class ImportanceSampler(object):
     """
 
     def __init__(self, data, size, num_layers, batch_size=1, shuffle=False, drop_last=False,
-                 flow='source_to_target', skip_connect=False):
+                 flow='source_to_target', add_self_loop=True, skip_connect=False):
 
         self.data = data
         self.size = repeat(size, num_layers)
@@ -110,13 +110,13 @@ class ImportanceSampler(object):
         self.drop_last = drop_last
         self.flow = flow
         self.skip_connect = skip_connect
-
+        self.self_loop = add_self_loop
         self.edge_index = data.edge_index
         self.edge_attr = data.edge_attr
         self.num_nodes = data.num_nodes
 
         A_weight = torch.sparse.FloatTensor(self.edge_index, self.edge_attr).to_dense()
-        self.A_weight_normalize = f.normalize(A_weight, dim=0)
+        self.A_weight_normalize = f.normalize(A_weight, p=1, dim=1)
 
         self.e_id = torch.arange(self.edge_index.size(1))
         self.num_layers = num_layers
@@ -162,8 +162,7 @@ class ImportanceSampler(object):
         getting the neighbor_node distribution of node #id
         """
         idmask = torch.zeros(self.num_nodes)
-        for id in ids:
-            idmask[id] = 1
+        idmask[ids] = 1
         dist = torch.matmul(self.A_weight_normalize, idmask)
         dist = dist/dist.sum(0).expand_as(dist)
         return dist
@@ -189,7 +188,7 @@ class ImportanceSampler(object):
                 if self.e_ids[sam, id] + 1 != 0:
                     e_id.append(self.e_ids[sam, id])
 
-        con_id = self.edge_index[self.i, e_id].unique()
+        con_id = self.edge_index[self.i, e_id]
         # find the isolated nodes
         isolate_nodes = torch.LongTensor(list(set(n_id.tolist()) - set(con_id.tolist())))
         samp = torch.cat([samp, isolate_nodes])
@@ -254,6 +253,8 @@ class ImportanceSampler(object):
             #create new edge_index
             edge_index = torch.stack(edges, dim=0)
 
+            assert len(edge_index[self.i].unique()) == len(n_id)
+            assert len(edge_index[self.j].unique()) == len(new_n_id)
             #update new_n_id
             n_id = new_n_id
             data_flow.append(n_id, None, e_id, edge_index, p)
