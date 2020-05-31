@@ -39,7 +39,8 @@ class STConfig(BaseConfig):
         # choices: ./data/METR-LA, ./data/NYC-Sharing-Bike
         self.data_dir = './data'
         self.gcn = 'gcn1'  # choices: sage, gat
-
+        self.num_gcn_layer = 1
+        self.graph_size = 500
         # per-gpu training batch size, real_batch_size = batch_size * num_gpus * grad_accum_steps
         self.batch_size = 16
         self.normalize = 'none'
@@ -51,8 +52,7 @@ class STConfig(BaseConfig):
         # pretrained ckpt for krnn, use 'none' to ignore it
         self.pretrain_ckpt = 'none'
         self.use_residual = True
-        self.num_gcn_layer = 1
-        self.graph_size = 500
+
 
 
 def get_model_class(model):
@@ -140,8 +140,8 @@ class SpatialTemporalTask(BasePytorchTask):
     def make_sample_dataloader(self, X, y, batch_size, shuffle=False, use_dist_sampler=False, rep_eval=None):
         # return a data loader based on neighbor sampling
         dataset = NeighborSampleDataset(
-            X, y, self.edge_index, self.edge_weight, self.config.num_nodes, batch_size, self.config.graph_size,
-            self.config.num_gcn_layer,
+            X, y, self.edge_index, self.edge_weight, self.config.num_nodes, batch_size,
+            graph_size=self.config.graph_size, num_gcn_layer=self.config.num_gcn_layer,
             shuffle=shuffle, use_dist_sampler=use_dist_sampler, rep_eval=rep_eval
         )
 

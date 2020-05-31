@@ -365,14 +365,14 @@ class EGNNNet(nn.Module):
 class GCNConv(PyG.MessagePassing):
     def __init__(self, in_channels, out_channels, skip_connect=False, normalize=False, **kwargs):
         super(GCNConv, self).__init__(aggr='mean')
-        self.lin = torch.nn.Linear(in_channels, out_channels)
+        self.lin = torch.nn.Linear(in_channels, out_channels, bias=False)
 
     def forward(self, x, edge_index, size, prob):
         x = self.lin(x)
         row, col = edge_index
         deg_r = degree(row, size[0], dtype=x.dtype)
         deg_c = degree(col, size[1], dtype=x.dtype)
-        #print(min(deg_c), min(deg_r))
+        assert(min(deg_c), min(deg_r) > 0)
         norm = prob[edge_index[0]].pow(-1) * deg_r.pow(-0.5)[edge_index[0]] * deg_c.pow(-0.5)[edge_index[1]]
         return self.propagate(edge_index, size=size, x=x, norm=norm)
 
@@ -456,7 +456,7 @@ class GCN2(nn.Module):
         conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
 
         X = F.leaky_relu(conv1)
-        conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
+        conv2 = self.conv2(X, edge_index[1], size[1], prob[1])
 
         X = F.leaky_relu(conv2)
         X = X.permute(1, 0, 2)
@@ -479,10 +479,10 @@ class GCN3(nn.Module):
         conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
 
         X = F.leaky_relu(conv1)
-        conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
+        conv2 = self.conv2(X, edge_index[1], size[1], prob[1])
 
         X = F.leaky_relu(conv2)
-        conv3 = self.conv3(X, edge_index[2], size[2], prob[0])
+        conv3 = self.conv3(X, edge_index[2], size[2], prob[2])
 
         X = F.leaky_relu(conv3)
         X = X.permute(1, 0, 2)
@@ -506,13 +506,13 @@ class GCN4(nn.Module):
         conv1 = self.conv1(X, edge_index[0], size[0], prob[0])
 
         X = F.leaky_relu(conv1)
-        conv2 = self.conv2(X, edge_index[1], size[1], prob[0])
+        conv2 = self.conv2(X, edge_index[1], size[1], prob[1])
 
         X = F.leaky_relu(conv2)
-        conv3 = self.conv3(X, edge_index[2], size[2], prob[0])
+        conv3 = self.conv3(X, edge_index[2], size[2], prob[2])
 
         X = F.leaky_relu(conv3)
-        conv4 = self.conv4(X, edge_index[3], size[3], prob[0])
+        conv4 = self.conv4(X, edge_index[3], size[3], prob[3])
 
         X = F.leaky_relu(conv4)
         X = X.permute(1, 0, 2)
