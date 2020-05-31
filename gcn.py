@@ -468,7 +468,7 @@ class GCN3(nn.Module):
         super(GCN3, self).__init__()
         self.conv1 = GCNConv(in_channels, 16)
         self.conv2 = GCNConv(16, 64)
-        self.conv3 = GCNConv(16, out_channels)
+        self.conv3 = GCNConv(64, out_channels)
 
     def forward(self, X, g):
         edge_index = g['edge_index']
