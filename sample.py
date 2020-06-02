@@ -26,10 +26,12 @@ from base_task import add_config_to_argparse, BaseConfig, BasePytorchTask, \
 
 
 class NeighborSampleDataset(IterableDataset):
-    def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, graph_size, num_gcn_layer=1, shuffle=True, use_dist_sampler=False, rep_eval=None):
+    def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, graph_size, num_gcn_layer=1, shuffle=True,
+                 use_dist_sampler=False, rep_eval=None, add_self_loop=False
+                 ):
         self.X = X
         self.y = y
-
+        self.add_self_loop = add_self_loop
         self.edge_index = edge_index
         self.edge_weight = edge_weight
         self.num_nodes = num_nodes
@@ -55,7 +57,7 @@ class NeighborSampleDataset(IterableDataset):
 
         graph_sampler = ImportanceSampler(
             graph, size=np.repeat(self.size, self.num_gcn_layer), num_layers=self.num_gcn_layer, batch_size=200,
-            shuffle=self.shuffle, skip_connect=False
+            shuffle=self.shuffle, skip_connect=False, add_self_loop=self.add_self_loop
             # graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
         )
 

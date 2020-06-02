@@ -52,7 +52,7 @@ class STConfig(BaseConfig):
         # pretrained ckpt for krnn, use 'none' to ignore it
         self.pretrain_ckpt = 'none'
         self.use_residual = True
-
+        self.add_self_loop = False
 
 
 def get_model_class(model):
@@ -82,7 +82,7 @@ class SpatialTemporalTask(BasePytorchTask):
 
         self.init_data()
         self.loss_func = nn.MSELoss()
-
+        self.add_self_loop = config.add_self_loop
         self.log('Config:\n{}'.format(
             json.dumps(self.config.to_dict(), ensure_ascii=False, indent=4)
         ))
@@ -142,7 +142,7 @@ class SpatialTemporalTask(BasePytorchTask):
         dataset = NeighborSampleDataset(
             X, y, self.edge_index, self.edge_weight, self.config.num_nodes, batch_size,
             graph_size=self.config.graph_size, num_gcn_layer=self.config.num_gcn_layer,
-            shuffle=shuffle, use_dist_sampler=use_dist_sampler, rep_eval=rep_eval
+            shuffle=shuffle, use_dist_sampler=use_dist_sampler, rep_eval=rep_eval, add_self_loop=self.add_self_loop
         )
 
         return DataLoader(dataset, batch_size=None)
