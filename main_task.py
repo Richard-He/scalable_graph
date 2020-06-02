@@ -35,7 +35,7 @@ class STConfig(BaseConfig):
 
         # 2. set spatial-temporal config variables:
         self.model = 'sandwich'  # choices: tgcn, stgcn, gwnet
-        self.dataset = 'pemsd7'  # choices: metr, nyc
+        self.dataset = 'nyc'  # choices: metr, nyc
         # choices: ./data/METR-LA, ./data/NYC-Sharing-Bike
         self.data_dir = './data'
         self.gcn = 'gcn1'  # choices: sage, gat

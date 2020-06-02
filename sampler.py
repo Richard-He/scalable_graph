@@ -190,10 +190,16 @@ class ImportanceSampler(object):
 
         con_id = self.edge_index[self.i, e_id]
         # find the isolated nodes
-        isolate_nodes = torch.LongTensor(list(set(n_id.tolist()) - set(con_id.tolist())))
-        samp = torch.cat([samp, isolate_nodes])
-        for node in isolate_nodes:
-            e_id.append(self.e_ids[node, node])
+        if self.self_loop:
+            samp = torch.cat([samp, n_id]).unique()
+            for node in n_id:
+                e_id.append(self.e_ids[node, node])
+            e_id = list(set(e_id))
+        else:
+            isolate_nodes = torch.LongTensor(list(set(n_id.tolist()) - set(con_id.tolist())))
+            samp = torch.cat([samp, isolate_nodes])
+            for node in isolate_nodes:
+                e_id.append(self.e_ids[node, node])
         samp, _ = samp.sort()
         p = torch.from_numpy(ndist)[samp]
         return samp, e_id, p
