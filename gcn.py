@@ -365,7 +365,7 @@ class EGNNNet(nn.Module):
 class GCNConv(PyG.MessagePassing):
     def __init__(self, in_channels, out_channels, skip_connect=False, normalize=False, **kwargs):
         super(GCNConv, self).__init__(aggr='mean')
-        self.lin = torch.nn.Linear(in_channels, out_channels, bias=False)
+        self.lin = torch.nn.Linear(in_channels, out_channels)
 
     def forward(self, x, edge_index, size, prob):
         x = self.lin(x)
@@ -518,3 +518,11 @@ class GCN4(nn.Module):
         X = X.permute(1, 0, 2)
         # print(X.size())
         return X
+
+class GCN0(nn.Module):
+    def __init__(self, in_channels, out_channels, normalize=True):
+        super(GCN0, self).__init__()
+        self.lin = torch.nn.Linear(in_channels, out_channels, bias=False)
+
+    def forward(self, X, g):
+        return self.lin(X)

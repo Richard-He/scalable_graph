@@ -83,6 +83,77 @@ class DataFlow(object):
         return '{}({})'.format(self.__class__.__name__, info)
 
 
+class NaiveSampler(object):
+    def __init__(self, data, size, num_layers, batch_size=1, shuffle=False, drop_last=False,
+                 flow='source_to_target', add_self_loop=True, skip_connect=False):
+
+        self.data = data
+        self.size = repeat(size, num_layers)
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.flow = flow
+        self.skip_connect = skip_connect
+        self.self_loop = add_self_loop
+        self.edge_index = data.edge_index
+        self.edge_attr = data.edge_attr
+        self.num_nodes = data.num_nodes
+
+        A_weight = torch.sparse.FloatTensor(self.edge_index, self.edge_attr).to_dense()
+        self.A_weight_normalize = f.normalize(A_weight, p=1, dim=1)
+
+        self.e_id = torch.arange(self.edge_index.size(1))
+        self.num_layers = num_layers
+
+        assert flow in ['source_to_target', 'target_to_source']
+        self.i, self.j = (0, 1) if flow == 'target_to_source' else (1, 0)
+
+        edge_index_i, self.e_assoc = self.edge_index[self.i].sort()
+        self.edge_index_j = self.edge_index[self.j, self.e_assoc]
+        #deg = degree(edge_index_i, data.num_nodes, dtype=torch.long)
+        #self.cumdeg = torch.cat([deg.new_zeros(1), deg.cumsum(0)])
+        #cumdeg is the number of cumulative degree of nodes with index smaller than i
+
+        self.e_ids = -1 * torch.ones([self.num_nodes, self.num_nodes], dtype=torch.long)
+        for id in range(self.edge_index.size(1)):
+            self.e_ids[self.edge_index[self.j][id], self.edge_index[self.i][id]] = id
+
+        self.tmp = torch.empty(data.num_nodes, dtype=torch.long)
+
+
+    def __get_batches__(self, subset=None):
+        if subset is None and not self.shuffle:
+            subset = torch.arange(self.num_nodes, dtype=torch.long)
+        elif subset is None and self.shuffle:
+            subset = torch.randperm(self.num_nodes)
+        else:
+            if subset.dtype == torch.bool or subset.dtype == torch.uint8:
+                subset = subset.nonzero().view(-1)
+            if self.shuffle:
+                subset = subset[torch.randperm(subset.size(0))]
+
+        subsets = torch.split(subset, self.batch_size)
+        if self.drop_last and subsets[-1].size(0) < self.batch_size:
+            subsets = subsets[:-1]
+        assert len(subsets) > 0
+        return subsets
+
+
+    def __produce_bipartite_data_flow_importance__(self, n_id):
+        n_id, _ = n_id.sort()
+        data_flow = DataFlow(n_id, self.flow)
+
+        data_flow.append(n_id, None, None, None, None)
+        return data_flow
+
+
+    def __call__(self, subset=None):
+        produce = self.__produce_bipartite_data_flow_importance__
+        for n_id in self.__get_batches__(subset):
+            yield produce(n_id)
+
+
+
 class ImportanceSampler(object):
     """
     Importance Sampler implemented by Yihan.

@@ -18,7 +18,7 @@ import pandas as pd
 
 from tgcn import TGCN
 from sandwich import Sandwich
-from sampler import ImportanceSampler
+from sampler import ImportanceSampler, NaiveSampler
 
 from preprocess import generate_dataset, load_nyc_sharing_bike_data, load_metr_la_data, load_pems_d7_data, get_normalized_adj
 from base_task import add_config_to_argparse, BaseConfig, BasePytorchTask, \
@@ -27,7 +27,7 @@ from base_task import add_config_to_argparse, BaseConfig, BasePytorchTask, \
 
 class NeighborSampleDataset(IterableDataset):
     def __init__(self, X, y, edge_index, edge_weight, num_nodes, batch_size, graph_size, num_gcn_layer=1, shuffle=True,
-                 use_dist_sampler=False, rep_eval=None, add_self_loop=False
+                 use_dist_sampler=False, rep_eval=None, add_self_loop=False, cent_size=100, sample='ImportanceSampler'
                  ):
         self.X = X
         self.y = y
@@ -46,20 +46,31 @@ class NeighborSampleDataset(IterableDataset):
         self.rep_eval = rep_eval
 
         self.num_gcn_layer = num_gcn_layer
+        self.sample = sample
         self.size = graph_size
         self.graph_sampler = self._make_graph_sampler()
         self.length = self.get_length()
+        self.cent_size = cent_size
 
     def _make_graph_sampler(self):
         graph = Data(
             edge_index=self.edge_index, edge_attr=self.edge_weight, num_nodes=self.num_nodes
         ).to('cpu')
 
-        graph_sampler = ImportanceSampler(
-            graph, size=np.repeat(self.size, self.num_gcn_layer), num_layers=self.num_gcn_layer, batch_size=200,
-            shuffle=self.shuffle, skip_connect=False, add_self_loop=self.add_self_loop
-            # graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
-        )
+        if self.sample == 'ImportanceSampler':
+            graph_sampler = ImportanceSampler(
+                graph, size=np.repeat(self.size, self.num_gcn_layer), num_layers=self.num_gcn_layer,
+                batch_size=self.cent_size,
+                shuffle=self.shuffle, skip_connect=False, add_self_loop=self.add_self_loop
+                # graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
+            )
+        else:
+            graph_sampler = NaiveSampler(
+                graph, size=np.repeat(self.size, self.num_gcn_layer), num_layers=self.num_gcn_layer,
+                batch_size=self.cent_size,
+                shuffle=self.shuffle, skip_connect=False, add_self_loop=self.add_self_loop
+                # graph, size=[10, 15], num_hops=2, batch_size=250, shuffle=self.shuffle, add_self_loops=True
+            )
 
         return graph_sampler
 

@@ -16,10 +16,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from tgcn import TGCN
-from sandwich import Sandwich
 from sampler import ImportanceSampler
 from sample import NeighborSampleDataset
+from tgcn import TGCN
+from sandwich import Sandwich
 
 from preprocess import generate_dataset, load_nyc_sharing_bike_data, load_metr_la_data, load_pems_d7_data, get_normalized_adj
 from base_task import add_config_to_argparse, BaseConfig, BasePytorchTask, \
@@ -53,12 +53,14 @@ class STConfig(BaseConfig):
         self.pretrain_ckpt = 'none'
         self.use_residual = True
         self.add_self_loop = False
+        self.cent_size = 100
+        self.sample = 'ImportanceSampler'
 
 
 def get_model_class(model):
     return {
         'tgcn': TGCN,
-        'sandwich': Sandwich
+        'sandwich': Sandwich,
     }.get(model)
 
 
@@ -139,10 +141,12 @@ class SpatialTemporalTask(BasePytorchTask):
 
     def make_sample_dataloader(self, X, y, batch_size, shuffle=False, use_dist_sampler=False, rep_eval=None):
         # return a data loader based on neighbor sampling
+
         dataset = NeighborSampleDataset(
             X, y, self.edge_index, self.edge_weight, self.config.num_nodes, batch_size,
             graph_size=self.config.graph_size, num_gcn_layer=self.config.num_gcn_layer,
-            shuffle=shuffle, use_dist_sampler=use_dist_sampler, rep_eval=rep_eval, add_self_loop=self.add_self_loop
+            shuffle=shuffle, use_dist_sampler=use_dist_sampler, rep_eval=rep_eval, add_self_loop=self.add_self_loop,
+            cent_size=self.config.cent_size, sample=self.config.sample
         )
 
         return DataLoader(dataset, batch_size=None)

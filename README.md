@@ -5,5 +5,5 @@
 - [ ] Skip Connection
 
 #### TODO:
-- [ ] Dev-node Bug Free
-- [ ] Philly Result
+- [X] Dev-node Bug Free
+- [ ] NYC dataset
