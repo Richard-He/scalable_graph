@@ -47,10 +47,10 @@ class NeighborSampleDataset(IterableDataset):
 
         self.num_gcn_layer = num_gcn_layer
         self.sample = sample
+        self.cent_size = cent_size
         self.size = graph_size
         self.graph_sampler = self._make_graph_sampler()
         self.length = self.get_length()
-        self.cent_size = cent_size
 
     def _make_graph_sampler(self):
         graph = Data(
